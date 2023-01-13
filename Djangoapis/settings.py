@@ -122,7 +122,8 @@ USE_TZ = True
 CORS_ALLOWED_ORIGINS = [
    "http://localhost:3000",
    "http://mayportfolio.com",
-   "http://localhost:4200"
+   "http://localhost:4200",
+   "https://django-server-production-85a6.up.railway.app"
 ]
 
 
