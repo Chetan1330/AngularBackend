@@ -74,7 +74,7 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'Djangoapis.wsgi.application'
 
-CSRF_TRUSTED_ORIGINS = ['https://django-server-production-85a6.up.railway.app']
+CSRF_TRUSTED_ORIGINS = ['https://django-server-production-85a6.up.railway.app', 'https://web-production-24d2.up.railway.app']
 
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases
@@ -124,7 +124,8 @@ CORS_ALLOWED_ORIGINS = [
    "http://localhost:3000",
    "http://mayportfolio.com",
    "http://localhost:4200",
-   "https://django-server-production-85a6.up.railway.app"
+   "https://django-server-production-85a6.up.railway.app",
+   "https://web-production-24d2.up.railway.app"
 ]
 
 
