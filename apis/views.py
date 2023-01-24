@@ -107,6 +107,89 @@ print("Base dir is:",BASE_DIR)
 #####################################################################################
 
 
+################################ Robustness  ######################################
+def analyse(model, train_data, test_data, config, factsheet):
+    import numpy as np
+    import collections
+    import random
+    import sklearn.metrics as metrics
+    from art.attacks.evasion import FastGradientMethod, CarliniL2Method, DeepFool
+    from art.estimators.classification import SklearnClassifier
+    from sklearn.preprocessing import OneHotEncoder
+    from art.metrics import clever_u, RobustnessVerificationTreeModelsCliqueMethod
+    from art.estimators.classification import KerasClassifier
+    from art.metrics import loss_sensitivity
+    import tensorflow as tf
+    import numpy.linalg as la
+    import json
+
+    info = collections.namedtuple('info', 'description value')
+    result = collections.namedtuple('result', 'score properties')
+    from .FourPillars.Robustness.ConfidenceScore.ConfidenceScore import confidence_score
+    from .FourPillars.Robustness.CleverScore.CleverScore import clever_score
+    from .FourPillars.Robustness.CliqueMethod.CliqueMethodScore import clique_method
+    from .FourPillars.Robustness.LossSensitivity.LossSensitivityScore import loss_sensitivity_score
+    from .FourPillars.Robustness.ERFastGradientMethod.FastGradientAttackScore import fast_gradient_attack_score
+    from .FourPillars.Robustness.ERCWAttack.CarliWagnerAttackScore import carlini_wagner_attack_score
+    from .FourPillars.Robustness.ERDeepFool.DeepFoolAttackScore import deepfool_attack_score
+    """Reads the thresholds from the config file.
+    Calls all robustness metric functions with correct arguments.
+    Organizes all robustness metrics in a dict. Then returns the scores and the properties.
+        Args:
+            model: ML-model.
+            training_dataset: pd.DataFrame containing the used training data.
+            test_dataset: pd.DataFrame containing the used test data.
+            config: Config file containing the threshold values for the metrics.
+            factsheet: json document containing all information about the particular solution.
+
+        Returns:
+            Returns a result object containing all metric scores
+            and matching properties for every metric
+    """
+    model=pd.read_pickle(model)
+    train_data=pd.read_csv(train_data)
+    test_data=pd.read_csv(test_data)
+    config=pd.read_json(config)
+
+    factsheet=pd.read_json(factsheet)
+
+
+    clique_method_thresholds = config["score_clique_method"]["thresholds"]["value"]
+    print("clique_method_thresholds:",clique_method_thresholds)
+    clever_score_thresholds = config["score_clever_score"]["thresholds"]["value"]
+    loss_sensitivity_thresholds = config["score_loss_sensitivity"]["thresholds"]["value"]
+    confidence_score_thresholds = config["score_confidence_score"]["thresholds"]["value"]
+    fsg_attack_thresholds = config["score_fast_gradient_attack"]["thresholds"]["value"]
+    cw_attack_thresholds = config["score_carlini_wagner_attack"]["thresholds"]["value"]
+    deepfool_thresholds = config["score_carlini_wagner_attack"]["thresholds"]["value"]
+    
+    output = dict(
+        confidence_score   = confidence_score(model, train_data, test_data, confidence_score_thresholds),
+        clique_method      = clique_method(model, train_data, test_data, clique_method_thresholds, factsheet ),
+        loss_sensitivity   = loss_sensitivity_score(model, train_data, test_data, loss_sensitivity_thresholds),
+        clever_score       = clever_score(model, train_data, test_data, clever_score_thresholds),
+        er_fast_gradient_attack = fast_gradient_attack_score(model, train_data, test_data, fsg_attack_thresholds),
+        er_carlini_wagner_attack = carlini_wagner_attack_score(model, train_data, test_data, cw_attack_thresholds),
+        er_deepfool_attack = deepfool_attack_score(model, train_data, test_data, deepfool_thresholds)
+    )
+    scores = dict((k, v.score) for k, v in output.items())
+    properties = dict((k, v.properties) for k, v in output.items())
+    
+    return  result(score=scores, properties=properties)
+
+
+path_testdata=os.path.join(BASE_DIR,'apis/TestValues/test.csv')
+path_traindata=os.path.join(BASE_DIR,'apis/TestValues/train.csv')
+path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
+path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
+# path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/robustness/default.json')
+print("Robustness reslt:",analyse(path_module,path_traindata,path_testdata,path_mapping_fairness,path_factsheet))
+print("############################################################################")
+###########################################################################################
+
+########################### Fairness ###############################################
+
 def analyse(model, training_dataset, test_dataset, factsheet, config):
     import numpy as np
     np.random.seed(0)
@@ -114,6 +197,7 @@ def analyse(model, training_dataset, test_dataset, factsheet, config):
     import operator
     import funcy
 
+    model=pd.read_pickle(model)
     training_dataset=pd.read_csv(training_dataset)
     test_dataset=pd.read_csv(test_dataset)
 
@@ -181,7 +265,191 @@ path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
 path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
 # path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
 path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/fairness/default.json')
-print(analyse(path_module,path_traindata,path_testdata,path_factsheet,path_mapping_fairness))
+print("Fairness reslt:", analyse(path_module,path_traindata,path_testdata,path_factsheet,path_mapping_fairness))
+print("############################################################################")
+
+###############################################################################
+
+def analyse(clf, train_data, test_data, config, factsheet):
+    import numpy as np
+    import pandas as pd
+    import json
+    import collections
+    from .FourPillars.Explainability.AlgorithmClass.AlgorithmClassScore import algorithm_class_score
+
+    from .FourPillars.Explainability.CorrelatedFeatures.CorrelatedFeaturesScore import correlated_features_score
+    from .FourPillars.Explainability.FeatureRelevance.FeatureRelevanceScore import feature_relevance_score
+    from .FourPillars.Explainability.ModelSize.ModelSizeScore import model_size_score
+
+    result = collections.namedtuple('result', 'score properties')
+    info = collections.namedtuple('info', 'description value')
+
+    #convert path data to values
+    clf=pd.read_pickle(clf)
+    train_data=pd.read_csv(train_data)
+    test_data=pd.read_csv(test_data)
+    config=pd.read_json(config)
+
+    factsheet=pd.read_json(factsheet)
+
+    # with open(config, 'r') as f:
+    #     config = json.loads(f.read())
+    # with open(factsheet, 'r') as g:
+    #     factsheet = json.loads(g.read())
+    #function parameters
+    target_column = factsheet["general"].get("target_column")
+    clf_type_score = config["score_algorithm_class"]["clf_type_score"]["value"]
+    ms_thresholds = config["score_model_size"]["thresholds"]["value"]
+    cf_thresholds = config["score_correlated_features"]["thresholds"]["value"]
+    high_cor = config["score_correlated_features"]["high_cor"]["value"]
+    fr_thresholds = config["score_feature_relevance"]["thresholds"]["value"]
+    threshold_outlier = config["score_feature_relevance"]["threshold_outlier"]["value"]
+    penalty_outlier = config["score_feature_relevance"]["penalty_outlier"]["value"]
+    
+    output = dict(
+        algorithm_class     = algorithm_class_score(clf, clf_type_score),
+        correlated_features = correlated_features_score(train_data, test_data, thresholds=cf_thresholds, target_column=target_column, high_cor=high_cor ),
+        model_size          = model_size_score(train_data, ms_thresholds),
+        feature_relevance   = feature_relevance_score(clf, train_data ,target_column=target_column, thresholds=fr_thresholds,
+                                                     threshold_outlier =threshold_outlier,penalty_outlier=penalty_outlier )
+                 )
+
+    scores = dict((k, v.score) for k, v in output.items())
+    properties = dict((k, v.properties) for k, v in output.items())
+    
+    return  result(score=scores, properties=properties)
+
+path_testdata=os.path.join(BASE_DIR,'apis/TestValues/test.csv')
+path_traindata=os.path.join(BASE_DIR,'apis/TestValues/train.csv')
+path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
+path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
+# path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+print("Explainability reslt:", analyse(path_module,path_traindata,path_testdata, path_mapping_fairness, path_factsheet))
+print("############################################################################")
+
+
+def analyse(model, training_dataset, test_dataset, factsheet, methodology_config):
+    import collections
+    info = collections.namedtuple('info', 'description value')
+    import json
+    import os
+    import numpy as np
+    import collections
+    # from .FourPillars.helperfunctions import list_of_metrics
+    from .FourPillars.Accountability.FactSheetCompletness.FactSheetCompletnessScore import get_factsheet_completeness_score
+    from .FourPillars.Accountability.MissingData.MissingDataScore import missing_data_score
+    from .FourPillars.Accountability.Normalization.NormalizationScore import normalization_score
+    from .FourPillars.Accountability.Regularization.RegularizationScore import regularization_score
+    from .FourPillars.Accountability.TrainTestSplit.TrainTestSplitScore import train_test_split_score
+    import tensorflow as tf
+    from math import isclose
+    import re
+    result = collections.namedtuple('result', 'score properties')
+
+    model=pd.read_pickle(model)
+    training_dataset=pd.read_csv(training_dataset)
+    test_dataset=pd.read_csv(test_dataset)
+
+    with open(methodology_config, 'r') as f:
+        methodology_config = json.loads(f.read())
+    with open(factsheet, 'r') as g:
+        factsheet = json.loads(g.read())
+    normalization_mapping = methodology_config["score_normalization"]["mappings"]["value"]
+    missing_data_mapping = methodology_config["score_missing_data"]["mappings"]["value"]['no_null_values']
+    train_test_split_mapping = methodology_config["score_train_test_split"]["mappings"]["value"]['50-60 95-97']
+
+    # metrics = list_of_metrics("methodology")
+    output = dict(
+        #output[metric] = exec("%s_score(model, training_dataset, test_dataset, factsheet, methodology_config)" % metric)
+        normalization  = normalization_score(model, training_dataset, test_dataset, factsheet, normalization_mapping),
+        missing_data = missing_data_score(model, training_dataset, test_dataset, factsheet, missing_data_mapping),
+        regularization   = regularization_score(model, training_dataset, test_dataset, factsheet, methodology_config),
+        train_test_split = train_test_split_score(model, training_dataset, test_dataset, factsheet, train_test_split_mapping),
+        #test_accuracy = test_accuracy_score(model, training_dataset, test_dataset, factsheet, accuracy_thresholds),
+        #f1_score = f1_score(model, training_dataset, test_dataset, factsheet, f1_score_thresholds),
+        factsheet_completeness= get_factsheet_completeness_score(model, training_dataset, test_dataset, factsheet, methodology_config)
+    )
+
+    scores = dict((k, v.score) for k, v in output.items())
+    properties = dict((k, v.properties) for k, v in output.items())
+    
+    return  result(score=scores, properties=properties)
+
+path_testdata=os.path.join(BASE_DIR,'apis/TestValues/test.csv')
+path_traindata=os.path.join(BASE_DIR,'apis/TestValues/train.csv')
+path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
+path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
+path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+print("Accountability reslt:", analyse(path_module,path_traindata,path_testdata,path_factsheet,path_mapping_accountabiltiy))
+print("############################################################################")
+
+
+
+
+
+from sklearn import metrics
+import numpy as np
+import tensorflow as tf
+
+DEFAULT_TARGET_COLUMN_INDEX = -1
+DEFAULT_TARGET_COLUMN_NAME = 'Target'
+import pandas as pd
+
+def get_performance_metrics(model, test_data, target_column):
+    model=pd.read_pickle(model)
+    test_data=pd.read_csv(test_data)
+
+    y_test = test_data[target_column]
+    y_true = y_test.values.flatten()
+
+    if target_column:
+        X_test = test_data.drop(target_column, axis=1)
+        y_test = test_data[target_column]
+    else:
+        X_test = test_data.iloc[:,:DEFAULT_TARGET_COLUMN_INDEX]
+        y_test = test_data.reset_index(drop=True).iloc[:,DEFAULT_TARGET_COLUMN_INDEX:]
+        y_true = y_test.values.flatten()
+    if (isinstance(model, tf.keras.Sequential)):
+        y_pred_proba = model.predict(X_test)
+        y_pred = np.argmax(y_pred_proba, axis=1)
+    else:
+        y_pred = model.predict(X_test).flatten()
+        labels = np.unique(np.array([y_pred,y_true]).flatten())
+
+    performance_metrics = pd.DataFrame({
+    "accuracy" : [metrics.accuracy_score(y_true, y_pred)],
+    "global recall" : [metrics.recall_score(y_true, y_pred, labels=labels, average="micro")],
+    "class weighted recall" : [metrics.recall_score(y_true, y_pred,average="weighted")],
+    "global precision" : [metrics.precision_score(y_true, y_pred, labels=labels, average="micro")],
+    "class weighted precision" : [metrics.precision_score(y_true, y_pred,average="weighted")],
+    "global f1 score" : [metrics.f1_score(y_true, y_pred,average="micro")],
+    "class weighted f1 score" : [metrics.f1_score(y_true, y_pred,average="weighted")],
+    }).round(decimals=2)
+
+    performance_metrics = performance_metrics.transpose()
+    performance_metrics = performance_metrics.reset_index()
+    performance_metrics['index'] = performance_metrics['index'].str.title()
+    performance_metrics.rename(columns={"index":"key", 0:"value"}, inplace=True)
+
+    # print("Performance Metrics:", performance_metrics)
+    return performance_metrics
+
+path_testdata=os.path.join(BASE_DIR,'apis/TestValues/test.csv')
+path_traindata=os.path.join(BASE_DIR,'apis/TestValues/train.csv')
+path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
+path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
+# path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+# path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+print("Performance_Metrics reslt:", get_performance_metrics(path_module,path_testdata, 'Target'))
+
+# path_testdata=os.path.join(BASE_DIR,'apis/TestValues/test.csv')
+# path_traindata=os.path.join(BASE_DIR,'apis/TestValues/train.csv')
+# path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
+# path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
+# # path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+# path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+# print(analyse(path_module,path_traindata,path_testdata, path_mapping_fairness, path_factsheet))
 
 # print("Properties:",properties)
 # print("Score:",score)
@@ -194,25 +462,25 @@ print(analyse(path_module,path_traindata,path_testdata,path_factsheet,path_mappi
 # return result(score=score, properties=properties)
 
 
-@api_view(['POST'])
-def registerUser(request):
-    data = request.data
+# @api_view(['POST'])
+# def registerUser(request):
+#     data = request.data
 
-    print(data, 'data')
+#     print(data, 'data')
 
-    try:
-        user, created = CustomUser.objects.get_or_create(
-            user_id=data['id'],
-            first_name=data['name'],
-            username=data['name'],
-            email=data['email'],
-            picture=data['picture']
-        )
-        return Response("Successfully add!")
-    except:
-        message = {'detail': 'User with this email already exists'}
-        return Response(message, status=status.HTTP_400_BAD_REQUEST)
-# This is your test secret API key.
+#     try:
+#         user, created = CustomUser.objects.get_or_create(
+#             user_id=data['id'],
+#             first_name=data['name'],
+#             username=data['name'],
+#             email=data['email'],
+#             picture=data['picture']
+#         )
+#         return Response("Successfully add!")
+#     except:
+#         message = {'detail': 'User with this email already exists'}
+#         return Response(message, status=status.HTTP_400_BAD_REQUEST)
+# # This is your test secret API key.
 
 @csrf_exempt
 def create_checkout_session(request):
@@ -404,6 +672,74 @@ class solution(APIView):
         userexist = ScenarioUser.objects.filter(user_id=id)
         if userexist:
             userobj=ScenarioUser.objects.get(user_id=id)
+            scenarios = userobj.Scenario.all()
+            scenarioobj = userobj.scenariosolution.all()
+            
+            # print("Scenarioobj:",scenarioobj['response_data'][''])
+            if scenarios:
+                print("Scenarios data:", scenarios)
+            if scenarioobj:
+                for i in scenarioobj:
+                    # print("Solution is:",str(i.SolutionName))
+                    SolutionName.append(i.SolutionName)
+                    # ModelLinks.append(str(i.response_data['ModelLinks']).split("['")[1].split("']")[0])
+                    # LinktoDataset.append(str(i.response_data['LinktoDataset']).split("['")[1].split("']")[0])
+                    # Description.append(str(i.response_data['Description']).split("['")[1].split("']")[0])
+
+            print("SolutionName",SolutionName)
+            uploaddic['SolutionName'] = SolutionName
+            # uploaddic['ModelLinks'] = ModelLinks
+            # uploaddic['LinktoDataset'] = LinktoDataset
+            # uploaddic['Description'] = Description
+            # # print("User exist",scenarioobj)
+            # print("uploaddic",uploaddic)
+            return Response(uploaddic)
+
+            # return Response("Successfully Get!")
+        else:
+            print("User not exist.... Created new")
+            return Response("User not exist.... Created new")
+        # return Response(uploaddic)
+        # return Response("User not exist.... Created new")
+    
+    def post(self, request):
+        if request.data is not None:
+            # # trainingdata=request.data['TrainnigDatafile']
+            # # serializer=SolutionSerializer(data=request.data)
+            userexist = ScenarioUser.objects.get(user_id=request.data['Userid'])
+            fileupload = ScenarioSolution.objects.create(
+                user=userexist,
+                ScenarioName=request.data['SelectScenario'],
+                SolutionName=request.data['NameSolution'],
+                SolutionDescription=request.data['DescriptionSolution'],
+                TrainingFile=request.data['TrainingFile'],
+                TestFile=request.data['TesdtataFile'],
+                FactsheetFile=request.data['FactsheetFile'],
+                ModelFile=request.data['ModelFile'],
+                Targetcolumn=request.data['Targetcolumn']
+            )
+            fileupload.save()
+            ## for i in request.FILES.get['TrainnigDatafile']:
+            ##     print("File i:",i)
+            print("Received request.data request:",request.data)
+            # print("Received Post request:",request.data['Userid'])
+            # print("Received SelectScenario request:",request.data['SelectScenario'])
+            # print("Received TrainnigDatafile request:",request.data['TrainnigDatafile'])
+            # print("Type of file:",type(request.data['file']))
+        return Response("Successfully add!")
+
+class registerUser(APIView):
+    def get(self,request,id):
+        uploaddic = {}
+
+        SolutionName=[]
+        ModelLinks=[]
+        LinktoDataset=[]
+        Description=[]
+
+        userexist = ScenarioUser.objects.filter(user_id=id)
+        if userexist:
+            userobj=ScenarioUser.objects.get(user_id=id)
             scenarioobj = userobj.scenariosolution.all()
             
             # print("Scenarioobj:",scenarioobj['response_data'][''])
@@ -433,24 +769,42 @@ class solution(APIView):
     
     def post(self, request):
         if request.data is not None:
-            # trainingdata=request.data['TrainnigDatafile']
+            fullname=request.data['fullname']
+            email=request.data['email']
+            password=request.data['password']
             # serializer=SolutionSerializer(data=request.data)
-            userexist = ScenarioUser.objects.get(user_id=request.data['Userid'])
-            fileupload = ScenarioSolution.objects.create(
-                user=userexist,
-                ScenarioName=request.data['SelectScenario'],
-                SolutionName=request.data['NameSolution'],
-                SolutionDescription=request.data['DescriptionSolution'],
-                TrainingFile=request.data['TrainingFile'],
-                TestFile=request.data['TesdtataFile'],
-                FactsheetFile=request.data['FactsheetFile'],
-                ModelFile=request.data['ModelFile'],
-                Targetcolumn=request.data['Targetcolumn']
-            )
-            fileupload.save()
-            # for i in request.FILES.get['TrainnigDatafile']:
-            #     print("File i:",i)
-            print("Received request.data request:",request.data)
+            # userexist = ScenarioUser.objects.get(fullname=request.data['fullname'],
+            # email=request.data['email'])
+            userexist = ScenarioUser.objects.filter(fullname=request.data['fullname'],
+            email=request.data['email'])
+            if userexist:
+                print("User Already Exist!")
+                return Response("User Already Exist!")
+            else:
+                userform = ScenarioUser.objects.create(
+                fullname=request.data['fullname'],
+                email=request.data['email'],
+                password=request.data['password'],
+                )
+                userform.save()
+                print("Successfully Created User!")
+                return Response("Successfully Created User!")
+                
+            # fileupload = ScenarioSolution.objects.create(
+            #     user=userexist,
+            #     ScenarioName=request.data['SelectScenario'],
+            #     SolutionName=request.data['NameSolution'],
+            #     SolutionDescription=request.data['DescriptionSolution'],
+            #     TrainingFile=request.data['TrainingFile'],
+            #     TestFile=request.data['TesdtataFile'],
+            #     FactsheetFile=request.data['FactsheetFile'],
+            #     ModelFile=request.data['ModelFile'],
+            #     Targetcolumn=request.data['Targetcolumn']
+            # )
+            # fileupload.save()
+            ## for i in request.FILES.get['TrainnigDatafile']:
+            ##     print("File i:",i)
+            # print("Received registerUser data request:",request.data)
             # print("Received Post request:",request.data['Userid'])
             # print("Received SelectScenario request:",request.data['SelectScenario'])
             # print("Received TrainnigDatafile request:",request.data['TrainnigDatafile'])
@@ -464,29 +818,121 @@ class analyze(APIView):
         # return Response(uploaddic)
     
     def post(self, request):
+        uploaddic = {}
+
+        ScenarioName=[]
+        LinktoDataset=[]
+        Description=[]
+
+        accuracy=[]
+        globalrecall=[]
+        classweightedrecall=[]
+        globalprecision=[]
+        classweightedprecision=[]
+        globalf1score=[]
+        classweightedf1score=[]
+        
+
         print("POST analyze request.data request:",request.data)
+        if request.data is not None:
+            userexist = ScenarioUser.objects.get(user_id=request.data['Userid'])
+            scenario = userexist.Scenario.all()
+            scenarioobj = userexist.scenariosolution.all()
+            
+            if scenario:
+                for i in scenario:
+                    print("Response data ScenarioName:", i.response_data['ScenarioName']),
+                    print("Response data Description:", i.response_data['Description']),
+                    print("Response data LinktoDataset:", i.response_data['LinktoDataset'])
 
-        factsheet=pd.read_json(os.path.join(BASE_DIR,'media'))
+                    ScenarioName.append(str(i.response_data['ScenarioName']).split("['")[1].split("']")[0]),
+                    LinktoDataset.append(str(i.response_data['LinktoDataset']).split("['")[1].split("']")[0]),
+                    Description.append(str(i.response_data['Description']).split("['")[1].split("']")[0]),
+                    
+                    # ScenarioName= i.response_data['ScenarioName'],
+                    # LinktoDataset= i.response_data['LinktoDataset'],
+                    # Description= i.response_data['Description'],
+                
+            print("ScenarioName", ScenarioName)
+            print("LinktoDataset", LinktoDataset)
+            print("Description", Description)
+            
+            uploaddic['ScenarioName'] = ScenarioName
+            uploaddic['LinktoDataset'] = LinktoDataset
+            uploaddic['Description'] = Description
+                    # ScenarioName=request.data['SelectScenario'],
+                    # SolutionName=request.data['SelectSolution'],
+            
+            # if scenarioobj:
+            #     for i in scenarioobj:
+            #         print("ScenarioSolution data:", i.SolutionName)
 
-        import collections
-        info = collections.namedtuple('info', 'description value')
-        result = collections.namedtuple('result', 'score properties')
+            from sklearn import metrics
+            import numpy as np
+            import tensorflow as tf
 
-        score = 0
-        properties= {"dep" :info('Depends on','Factsheet')}
-        GENERAL_INPUTS = ["model_name", "purpose_description", "domain_description", "training_data_description", "model_information", "authors", "contact_information"]
+            DEFAULT_TARGET_COLUMN_INDEX = -1
+            DEFAULT_TARGET_COLUMN_NAME = 'Target'
+            import pandas as pd
 
-        n = len(GENERAL_INPUTS)
-        ctr = 0
-        for e in GENERAL_INPUTS:
-            if "general" in factsheet and e in factsheet["general"]:
-                ctr+=1
-                properties[e] = info("Factsheet Property {}".format(e.replace("_"," ")), "present")
-            else:
-                properties[e] = info("Factsheet Property {}".format(e.replace("_"," ")), "missing")
-        score = round(ctr/n*5)
+            def get_performance_metrics(model, test_data, target_column):
+                model=pd.read_pickle(model)
+                test_data=pd.read_csv(test_data)
+
+                y_test = test_data[target_column]
+                y_true = y_test.values.flatten()
+
+                if target_column:
+                    X_test = test_data.drop(target_column, axis=1)
+                    y_test = test_data[target_column]
+                else:
+                    X_test = test_data.iloc[:,:DEFAULT_TARGET_COLUMN_INDEX]
+                    y_test = test_data.reset_index(drop=True).iloc[:,DEFAULT_TARGET_COLUMN_INDEX:]
+                    y_true = y_test.values.flatten()
+                if (isinstance(model, tf.keras.Sequential)):
+                    y_pred_proba = model.predict(X_test)
+                    y_pred = np.argmax(y_pred_proba, axis=1)
+                else:
+                    y_pred = model.predict(X_test).flatten()
+                    labels = np.unique(np.array([y_pred,y_true]).flatten())
+
+                performance_metrics = pd.DataFrame({
+                "accuracy" : [metrics.accuracy_score(y_true, y_pred)],
+                "global recall" : [metrics.recall_score(y_true, y_pred, labels=labels, average="micro")],
+                "class weighted recall" : [metrics.recall_score(y_true, y_pred,average="weighted")],
+                "global precision" : [metrics.precision_score(y_true, y_pred, labels=labels, average="micro")],
+                "class weighted precision" : [metrics.precision_score(y_true, y_pred,average="weighted")],
+                "global f1 score" : [metrics.f1_score(y_true, y_pred,average="micro")],
+                "class weighted f1 score" : [metrics.f1_score(y_true, y_pred,average="weighted")],
+                }).round(decimals=2)
+
+                uploaddic['accuracy'] = ("%.2f" % metrics.accuracy_score(y_true, y_pred))
+                uploaddic['globalrecall'] = ("%.2f" % metrics.recall_score(y_true, y_pred, labels=labels, average="micro"))
+                uploaddic['classweightedrecall'] = ("%.2f" % metrics.recall_score(y_true, y_pred,average="weighted"))
+                uploaddic['globalprecision'] = ("%.2f" % metrics.precision_score(y_true, y_pred, labels=labels, average="micro"))
+                uploaddic['classweightedprecision'] = ("%.2f" % metrics.precision_score(y_true, y_pred,average="weighted"))
+                uploaddic['globalf1score'] = ("%.2f" % metrics.f1_score(y_true, y_pred,average="micro"))
+                uploaddic['classweightedf1score'] = ("%.2f" % metrics.f1_score(y_true, y_pred,average="weighted"))
+
+                performance_metrics = performance_metrics.transpose()
+                performance_metrics = performance_metrics.reset_index()
+                performance_metrics['index'] = performance_metrics['index'].str.title()
+                performance_metrics.rename(columns={"index":"key", 0:"value"}, inplace=True)
+
+                # print("Performance Metrics:", performance_metrics)
+                return performance_metrics
+
+            path_testdata=os.path.join(BASE_DIR,'apis/TestValues/test.csv')
+            path_traindata=os.path.join(BASE_DIR,'apis/TestValues/train.csv')
+            path_module=os.path.join(BASE_DIR,'apis/TestValues/model.pkl')
+            path_factsheet=os.path.join(BASE_DIR,'apis/TestValues/factsheet.json')
+            # path_mapping_accountabiltiy=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/Accountability/default.json')
+            # path_mapping_fairness=os.path.join(BASE_DIR,'apis/MappingsWeightsMetrics/Mappings/explainability/default.json')
+            print("Performance_Metrics reslt:", get_performance_metrics(path_module,path_testdata, 'Target'))
+            
+        
         # return result(score=score, properties=properties)
-        return Response("Successfully add!")
+        return Response(uploaddic)
 
         # def get_factsheet_completeness_score(model, training_dataset, test_dataset, factsheet, methodology_config):
         #     import collections
